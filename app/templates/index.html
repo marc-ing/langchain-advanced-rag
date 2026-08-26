@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="使用 LangChain LCEL、FAISS 和条件分支实现的 HR 政策 RAG 助手"
+    />
+    <title>{{ app_name }}</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧩</text></svg>" />
+    <link rel="stylesheet" href="{{ url_for('static', path='/css/style.css') }}" />
+  </head>
+  <body
+    data-max-files="{{ max_files }}"
+    data-max-file-size-mb="{{ max_file_size_mb }}"
+    data-project-key="langchain-advanced-rag"
+  >
+    <div class="ambient ambient-one" aria-hidden="true"></div>
+    <div class="ambient ambient-two" aria-hidden="true"></div>
+
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M8.3 4.2a3 3 0 1 0 0 6h2.2M15.7 13.8a3 3 0 1 0 0 6h-2.2M15.7 4.2a3 3 0 1 1 0 6h-2.2M8.3 13.8a3 3 0 1 1 0 6h2.2M10.5 7.2h3M10.5 16.8h3M7.9 10.2v3.6M16.1 10.2v3.6" />
+            </svg>
+          </div>
+          <div>
+            <span class="eyebrow">HR KNOWLEDGE WORKSPACE</span>
+            <h1>LangChain <em>Advanced RAG</em></h1>
+          </div>
+        </div>
+
+        <section class="panel" aria-labelledby="settings-title">
+          <div class="panel-heading">
+            <div><span class="step-number">01</span><h2 id="settings-title">模型设置</h2></div>
+            <span id="configBadge" class="status-badge neutral"><i></i><span>待配置</span></span>
+          </div>
+
+          <div class="field-group">
+            <label for="apiKey">API Key <small>仅随请求发送</small></label>
+            <div class="secret-field">
+              <input id="apiKey" type="password" autocomplete="off" placeholder="sk-..." />
+              <button id="toggleKey" type="button" aria-label="显示 API Key">显示</button>
+            </div>
+            <label class="remember-row" for="rememberApiKey">
+              <input id="rememberApiKey" type="checkbox" />
+              <span>在此浏览器记住 API Key</span>
+            </label>
+          </div>
+
+          <div class="field-group">
+            <label for="baseUrl">API Base URL <small>支持自定义端口</small></label>
+            <input id="baseUrl" type="url" value="{{ default_base_url }}" spellcheck="false" />
+          </div>
+          <div class="model-grid">
+            <div class="field-group">
+              <label for="embeddingModel">Embedding 模型</label>
+              <input id="embeddingModel" value="{{ default_embedding_model }}" spellcheck="false" />
+            </div>
+            <div class="field-group">
+              <label for="llmModel">LLM 模型</label>
+              <input id="llmModel" value="{{ default_llm_model }}" spellcheck="false" />
+            </div>
+          </div>
+          <div class="button-row">
+            <button id="testConfigButton" class="button secondary" type="button"><span>测试当前配置</span></button>
+            <button id="resetSettingsButton" class="text-button" type="button">恢复默认</button>
+          </div>
+          <p id="configTestResult" class="inline-result" hidden></p>
+        </section>
+
+        <section class="panel" aria-labelledby="knowledge-title">
+          <div class="panel-heading">
+            <div><span class="step-number">02</span><h2 id="knowledge-title">员工手册知识库</h2></div>
+          </div>
+          <label id="dropZone" class="drop-zone" for="documentInput">
+            <input id="documentInput" type="file" accept=".md,.markdown,text/markdown" multiple hidden />
+            <span class="upload-icon" aria-hidden="true">MD</span>
+            <strong>拖入或选择 Markdown 文件</strong>
+            <small>按 H1 / H2 标题切分 · 单个不超过 {{ max_file_size_mb }} MB</small>
+          </label>
+          <div id="fileList" class="file-list"></div>
+          <button id="processButton" class="button primary full" type="button" disabled>
+            <span>构建 FAISS 索引</span>
+          </button>
+
+          <div class="index-card">
+            <div class="index-status">
+              <i id="indexPulse"></i>
+              <div><small>KNOWLEDGE STATUS</small><strong id="indexStatusText">正在读取...</strong></div>
+              <button id="clearIndexButton" class="icon-button" type="button" aria-label="清除索引" hidden>×</button>
+            </div>
+            <div id="indexStats" class="index-stats" hidden>
+              <span><strong id="fileCount">0</strong> 文件</span>
+              <span><strong id="chunkCount">0</strong> 章节</span>
+              <span><strong>Top-3</strong> 检索</span>
+            </div>
+          </div>
+        </section>
+
+        <p class="sidebar-note">配置保存在当前浏览器；API Key 仅在主动勾选后持久化。</p>
+      </aside>
+
+      <main class="workspace">
+        <header class="workspace-header">
+          <div>
+            <span class="eyebrow">CONDITIONAL HR ASSISTANT</span>
+            <h2>HR 政策对话</h2>
+            <p id="chatSubtitle">完成设置并建立知识库后即可提问</p>
+          </div>
+          <div class="header-badges">
+            <span>LCEL</span><span>FAISS</span><span>History 50</span>
+          </div>
+        </header>
+
+        <section class="workflow-card" aria-label="LangChain 工作流">
+          <div class="workflow-copy">
+            <span class="eyebrow">LIVE CHAIN</span>
+            <strong>RunnableBranch 条件检索链</strong>
+          </div>
+          <div id="workflowTrack" class="workflow-track">
+            <span class="workflow-node" data-node="extract">提取问题</span><i>→</i>
+            <span class="workflow-node" data-node="classify">HR 分类</span><i>→</i>
+            <span class="workflow-node branch" data-node="branch">条件分支</span><i>→</i>
+            <span class="workflow-node" data-node="retrieve">FAISS 检索</span><i>→</i>
+            <span class="workflow-node" data-node="generate">生成回答</span>
+            <span class="workflow-node deny" data-node="deny">拒答</span>
+          </div>
+        </section>
+
+        <section class="chat-card">
+          <div id="chatMessages" class="chat-messages" aria-live="polite">
+            <div id="emptyState" class="empty-state">
+              <div class="empty-orbit"><span>HR</span></div>
+              <span class="empty-kicker">LANGCHAIN ADVANCED RAG</span>
+              <h3>先判断问题，再决定是否检索</h3>
+              <p>HR 相关问题进入 FAISS Top-3 检索与生成链；无关问题由条件分支直接拒答。</p>
+              <div class="suggestions">
+                <button type="button" data-question="员工每年有多少天年假？">年假政策</button>
+                <button type="button" data-question="病假申请需要提交什么材料？">病假流程</button>
+                <button type="button" data-question="试用期的绩效如何评估？">绩效评估</button>
+              </div>
+            </div>
+          </div>
+
+          <form id="chatForm" class="composer">
+            <div class="composer-topline">
+              <span>支持连续追问，最多携带最近 50 条消息</span>
+              <button id="clearChatButton" class="text-button" type="button" hidden>清空对话</button>
+            </div>
+            <div class="composer-box">
+              <textarea id="questionInput" rows="1" maxlength="2000" placeholder="请先构建员工手册索引..." disabled></textarea>
+              <button id="sendButton" class="send-button" type="submit" aria-label="发送" disabled>
+                <svg viewBox="0 0 24 24"><path d="m5 12 14-7-4 14-3-5-7-2Zm7 2 7-9" /></svg>
+              </button>
+            </div>
+            <div class="composer-foot"><span>Enter 发送 · Shift + Enter 换行</span><span>v{{ app_version }}</span></div>
+          </form>
+        </section>
+      </main>
+    </div>
+
+    <div id="toast" class="toast" role="status"><b id="toastIcon">✓</b><span id="toastMessage"></span></div>
+    <script src="{{ url_for('static', path='/js/app.js') }}" defer></script>
+  </body>
+</html>
